@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestion des Documents</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f4;
+      margin: 0;
+      padding: 0;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-top: 20px;
+    }
+    .document-category {
+      background-color: #fff;
+      margin: 20px;
+      padding: 20px;
+      border-radius: 5px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    h2 {
+      color: #007BFF;
+      margin-bottom: 10px;
+    }
+    ul {
+      list-style-type: none;
+      padding: 0;
+    }
+    li {
+      margin: 10px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    a {
+      text-decoration: none;
+      color: #333;
+      font-size: 16px;
+      transition: color 0.3s;
+    }
+    a:hover {
+      color: #007BFF;
+    }
+    .space-buttons {
+      text-align: center;
+      margin-top: 20px;
+    }
+    .upload-form {
+      text-align: center;
+      margin: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Gestion des Documents</h1>
+  <div class="space-buttons">
+    <button id="btn-etudiant" onclick="showDocuments('etudiant')">Espace Étudiant</button>
+    <button id="btn-enseignant" onclick="showDocuments('enseignant')">Espace Enseignant</button>
+  </div>
+  <div class="upload-form">
+    <input type="file" id="fileInput" />
+    <select id="categorySelect">
+      <option value="etudiant">Étudiant</option>
+      <option value="enseignant">Enseignant</option>
+    </select>
+    <button onclick="uploadFile()">Ajouter</button>
+  </div>
+  <div id="documents-container"></div>
+  <script>
+    const azureUrl = 'https://gestiondoc.blob.core.windows.net/';
+    const sasTokens = {
+      etudiant: 'sp=r&st=2024-11-29T14:26:19Z&se=2024-11-30T22:26:19Z&spr=https&sv=2022-11-02&sr=c&sig=BHvN88vAAQH8tojBeu7b%2ByRJ3B3D2zUG6yQ8MtoFwCs%3D',
+      enseignant: 'sp=r&st=2024-11-29T14:28:14Z&se=2024-11-30T22:28:14Z&spr=https&sv=2022-11-02&sr=c&sig=dKStxTyYkmvOaRqkgTwEy9RQb0CKiOV0o9H8kPYr4uE%3D'
+    };
+    const containers = {
+      etudiant: 'documents-classes',
+      enseignant: 'documents-enseignants'
+    };
+    async function fetchDocuments(category) {
+      const response = await fetch(`${azureUrl}${containers[category]}?restype=container&comp=list&${sasTokens[category]}`);
+      const text = await response.text();
+      const parser = new DOMParser();
+      const xml = parser.parseFromString(text, 'application/xml');
+      const blobs = xml.getElementsByTagName('Blob');
+      const files = [];
+      for (let i = 0; i < blobs.length; i++) {
+        const name = blobs[i].getElementsByTagName('Name')[0].textContent;
+        const url = `${azureUrl}${containers[category]}/${name}?${sasTokens[category]}`;
+        files.push({ name, url });
+      }
+      return files;
+    }
+    async function renderDocuments(category) {
+      const container = document.getElementById('documents-container');
+      container.innerHTML = '';
+      const files = await fetchDocuments(category);
+      files.forEach(file => {
+        const categoryDiv = document.createElement('div');
+        categoryDiv.classList.add('document-category');
+        const categoryTitle = document.createElement('h2');
+        categoryTitle.textContent = category === 'etudiant' ? 'Documents Étudiant' : 'Documents Enseignant';
+        categoryDiv.appendChild(categoryTitle);
+        const ul = document.createElement('ul');
+        const li = document.createElement('li');
+        const link = document.createElement('a');
+        link.href = file.url;
+        link.target = '_blank';
+        link.textContent = file.name;
+        li.appendChild(link);
+        ul.appendChild(li);
+        categoryDiv.appendChild(ul);
+        container.appendChild(categoryDiv);
+      });
+    }
+    function showDocuments(space) {
+      document.getElementById('btn-etudiant').disabled = (space === 'etudiant');
+      document.getElementById('btn-enseignant').disabled = (space === 'enseignant');
+      renderDocuments(space);
+    }
+    async function uploadFile() {
+      const fileInput = document.getElementById('fileInput');
+      const category = document.getElementById('categorySelect').value;
+      const file = fileInput.files[0];
+      if (!file) return alert('Veuillez sélectionner un fichier');
+      const url = `${azureUrl}${containers[category]}/${file.name}?${sasTokens[category]}`;
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: { 'x-ms-blob-type': 'BlockBlob' },
+        body: file
+      });
+      if (response.ok) {
+        alert('Fichier téléchargé avec succès');
+        showDocuments(category);
+      } else {
+        alert('Erreur lors du téléchargement');
+      }
+    }
+    window.onload = () => showDocuments('etudiant');
+  </script>
+</body>
+</html>
